@@ -18,6 +18,19 @@
 #' If no variables exceed the threshold, no filtering is applied and the original
 #' data remain unchanged.
 #'
+#' In addition to being displayed, the underlying missingness table(s) are attached
+#' as attributes to the returned value, so they can be retrieved for further use
+#' (e.g. plotting) without re-parsing the printed messages. Only the attribute
+#' relevant to the chosen \code{type} is populated; the other is \code{NULL}:
+#' \itemize{
+#'   \item \code{"missing_aggregate"}: populated only when \code{type = "combined"}.
+#'   A single \code{data.frame} with variables as row names, one column per server,
+#'   and a \code{global} column with the weighted-average missingness percentage.
+#'   \item \code{"missing_server"}: populated only when \code{type = "split"}.
+#'   A named list of \code{data.frame}s (one per server), each with variables as
+#'   row names and a single column containing that server's missingness percentages.
+#' }
+#'
 #' Server-side functions called: \code{check_missing_dataDS}, \code{remove_columnsDS}
 #'
 #' @param df A character string specifying the name of the input data frame
@@ -52,6 +65,11 @@
 #'   }
 #' }
 #'
+#' In every case above, the returned value additionally carries two attributes,
+#' \code{"missing_aggregate"} and \code{"missing_server"}, as described in the
+#' Description section, which can be retrieved via \code{attr()} (e.g.
+#' \code{attr(result, "missing_aggregate")}).
+#'
 #' @export
 
 ds.check_missing_data <- function(df,
@@ -81,6 +99,13 @@ ds.check_missing_data <- function(df,
   miss_tab <- as.data.frame(miss_list)
   colnames(miss_tab) <- names(datasources)
 
+  # Helper: allega la/le tabelle come attributi al valore di ritorno
+  .attach_tables <- function(x, aggregate = NULL, server = NULL) {
+    attr(x, "missing_aggregate") <- aggregate
+    attr(x, "missing_server")    <- server
+    invisible(x)
+  }
+
   # ── TYPE == COMBINED ──────────────────────────────────────────────────────
   if (type == "combined") {
     dims    <- dsBaseClient::ds.dim(df, type = "split", datasources = datasources)
@@ -88,6 +113,9 @@ ds.check_missing_data <- function(df,
     names(n_vec) <- names(dims)
     miss_mat <- sapply(miss_tab[, names(datasources)], as.numeric)
     miss_tab$global <- (miss_mat %*% n_vec) / sum(n_vec)
+
+    # Tabella da ritornare: identica a quella stampata, rownames = variabili
+    missing_aggregate <- round(miss_tab, 2)
 
     vars_to_remove <- rownames(miss_tab)[miss_tab$global > threshold]
 
@@ -101,9 +129,9 @@ ds.check_missing_data <- function(df,
       message("\nNo columns need to be removed")
       if (remove) {
         message("\n Preprocessed data stored as: ", preproc_newobj)
-        return(invisible(preproc_newobj))
+        return(.attach_tables(preproc_newobj, aggregate = missing_aggregate))
       }
-      return(invisible(NULL))
+      return(.attach_tables(NULL, aggregate = missing_aggregate))
     }
 
     removed_tab <- data.frame(
@@ -116,7 +144,7 @@ ds.check_missing_data <- function(df,
 
     if (!remove) {
       message("\n remove = FALSE: no columns are removed.")
-      return(invisible(vars_to_remove))
+      return(.attach_tables(vars_to_remove, aggregate = missing_aggregate))
     }
 
     # remove = TRUE
@@ -130,6 +158,9 @@ ds.check_missing_data <- function(df,
       symbol = preproc_newobj,
       expr   = call("remove_columnsDS", as.symbol(df), cols_string)
     )
+
+    message("\n Preprocessed data stored as: ", preproc_newobj)
+    return(.attach_tables(preproc_newobj, aggregate = missing_aggregate))
   }
 
   # ── TYPE == SPLIT ─────────────────────────────────────────────────────────
@@ -137,6 +168,14 @@ ds.check_missing_data <- function(df,
     message("\n Missingness Table (%)")
     tbl_txt <- capture.output(round(miss_tab, 2))
     message(paste(tbl_txt, collapse = "\n"))
+
+    # Lista di data.frame, uno per server, solo con la colonna di quel server
+    missing_server <- lapply(colnames(miss_tab), function(srv) {
+      out <- data.frame(round(miss_tab[[srv]], 2), row.names = rownames(miss_tab))
+      colnames(out) <- srv
+      out
+    })
+    names(missing_server) <- colnames(miss_tab)
 
     vars_to_remove_list <- lapply(colnames(miss_tab), function(srv) {
       rownames(miss_tab)[miss_tab[[srv]] > threshold]
@@ -166,14 +205,14 @@ ds.check_missing_data <- function(df,
       message("\nNo columns need to be removed")
       if (remove) {
         message("\n Preprocessed data stored as: ", preproc_newobj)
-        return(invisible(preproc_newobj))
+        return(.attach_tables(preproc_newobj, server = missing_server))
       }
-      return(invisible(NULL))
+      return(.attach_tables(NULL, server = missing_server))
     }
 
     if (!remove) {
       message("\n remove = FALSE: no columns are removed.")
-      return(invisible(vars_to_remove_list))
+      return(.attach_tables(vars_to_remove_list, server = missing_server))
     }
 
     # remove = TRUE: call remove_columnsDS per server
@@ -192,13 +231,10 @@ ds.check_missing_data <- function(df,
         expr   = call("remove_columnsDS", as.symbol(df), cols_string)
       )
     }
+
+    message("\n Preprocessed data stored as: ", preproc_newobj)
+    return(.attach_tables(preproc_newobj, server = missing_server))
   }
-
-  message("\n Preprocessed data stored as: ", preproc_newobj)
-  invisible(preproc_newobj)
 }
-
-
-
 
 
