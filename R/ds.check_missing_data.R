@@ -99,7 +99,6 @@ ds.check_missing_data <- function(df,
   miss_tab <- as.data.frame(miss_list)
   colnames(miss_tab) <- names(datasources)
 
-  # Helper: allega la/le tabelle come attributi al valore di ritorno
   .attach_tables <- function(x, aggregate = NULL, server = NULL) {
     attr(x, "missing_aggregate") <- aggregate
     attr(x, "missing_server")    <- server
@@ -114,7 +113,6 @@ ds.check_missing_data <- function(df,
     miss_mat <- sapply(miss_tab[, names(datasources)], as.numeric)
     miss_tab$global <- (miss_mat %*% n_vec) / sum(n_vec)
 
-    # Tabella da ritornare: identica a quella stampata, rownames = variabili
     missing_aggregate <- round(miss_tab, 2)
 
     vars_to_remove <- rownames(miss_tab)[miss_tab$global > threshold]
@@ -169,7 +167,6 @@ ds.check_missing_data <- function(df,
     tbl_txt <- capture.output(round(miss_tab, 2))
     message(paste(tbl_txt, collapse = "\n"))
 
-    # Lista di data.frame, uno per server, solo con la colonna di quel server
     missing_server <- lapply(colnames(miss_tab), function(srv) {
       out <- data.frame(round(miss_tab[[srv]], 2), row.names = rownames(miss_tab))
       colnames(out) <- srv
