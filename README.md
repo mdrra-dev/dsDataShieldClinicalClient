@@ -1,1 +1,1 @@
-# dsDataShieldClinicalClient
+# dsDataClinicalHarmonizationClient
